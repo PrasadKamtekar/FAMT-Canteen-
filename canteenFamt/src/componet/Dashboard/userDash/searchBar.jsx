@@ -1,37 +1,48 @@
 import { Search, ShoppingCart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-function SearchBar() {
-    const navigate = useNavigate();
-    return (
-        <div className="flex justify-between items-center mt-[3vh] px-[4vw] pb-[1vw]">
 
-            {/* SEARCH */}
-            <div className="flex w-[36vw] bg-[#FFFFFF33] text-white rounded-lg overflow-hidden">
+function SearchBar({ value, onChange }) {
+  const navigate = useNavigate();
 
-                <input
-                    type="text"
-                    placeholder="Search Item..."
-                    className="flex-1 pl-4 py-2 text-[1vw] outline-none text-white bg-transparent"
-                />
+  // SEARCH BAR:
+  // Whenever the user types, we simply call onChange with the latest value.
+  // The parent (Home) then filters items using Array.filter().
+  const handleInputChange = (e) => {
+    onChange?.(e.target.value);
+  };
 
-                <button className="px-3 ">
-                    <Search size={20} strokeWidth={3} />
-                </button>
+  return (
+    <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center mt-[3vh] px-[4vw] pb-[1vw] gap-3">
 
-            </div>
+      {/* SEARCH */}
+      <div className="flex flex-1 bg-[#FFFFFF33] text-white rounded-lg overflow-hidden">
 
-            {/* CART */}
-            <div >
-                <button onClick={()=> {
-                    navigate('/cart');
-                }} className="bg-[#FBA808] p-[0.5vw] rounded-full hover:bg-white">
-                    <ShoppingCart size={24} strokeWidth={1} />
-                </button>
+        <input
+          type="text"
+          placeholder="Search Item..."
+          value={value}
+          onChange={handleInputChange}
+          className="flex-1 pl-4 py-2 text-[4vw] md:text-[1vw] outline-none text-white bg-transparent"
+        />
 
-            </div>
+        <button className="px-3 ">
+          <Search size={20} strokeWidth={3} />
+        </button>
 
-        </div>
-    )
+      </div>
+
+      {/* CART */}
+      <div className="flex justify-end">
+        <button onClick={() => {
+          navigate('/cart');
+        }} className="bg-[#FBA808] p-[2.5vw] md:p-[0.5vw] rounded-full hover:bg-white">
+          <ShoppingCart size={24} strokeWidth={1} />
+        </button>
+
+      </div>
+
+    </div>
+  )
 }
 
 export default SearchBar

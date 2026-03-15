@@ -8,7 +8,7 @@ function Login({handleLogin}){
   
     
     return (
-        <div className="bg-[#0F6657] w-[23vw] pt-[2vw] rounded-[0.6vw]">
+        <div className="bg-[#0F6657] w-[90vw] md:w-[23vw] pt-[2vw] rounded-[0.6vw]">
             <h1 className="text-[1.7vw] leading-[2.5vw] mb-[1.2vw] pl-[2.2vw] font-semibold text-[#F8FAFC]">
                 Sign in to <br />
                 FAMT<span className="text-[#FBA808]">CANTEEN</span>
