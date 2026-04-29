@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
 import { AuthContext } from './AuthContext';
+import SplashScreen from '../componet/SplashScreen';
 
 export default function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
@@ -55,9 +56,7 @@ export default function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={value}>
       {loading ? (
-        <div className="flex h-screen w-screen items-center justify-center bg-[#eeeef1]">
-            <h1 className="text-xl font-bold text-[#0F6657]">Loading FAMT<span className="text-[#FBA808]">CANTEEN</span>...</h1>
-        </div>
+        <SplashScreen />
       ) : (
         children
       )}

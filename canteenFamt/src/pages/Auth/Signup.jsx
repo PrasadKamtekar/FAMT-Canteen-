@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -9,7 +10,6 @@ function Signup() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   
   const { signup } = useAuth();
@@ -18,12 +18,11 @@ function Signup() {
   const handleSignup = async (e) => {
     e.preventDefault();
     if (!username || !email || !password) {
-      setError("Please enter username, email and password");
+      toast.error("Please enter username, email and password");
       return;
     }
 
     try {
-      setError("");
       setLoading(true);
       
       // Create user in Firebase Auth
@@ -65,7 +64,6 @@ function Signup() {
         default:
           friendlyMessage = err.message || 'Failed to create an account.';
       }
-      setError(friendlyMessage);
       toast.error(friendlyMessage);
     }
     
@@ -82,8 +80,6 @@ function Signup() {
       </div>
 
       <div className="bg-[#F8FAFC] rounded-xl flex flex-col gap-4 p-4 sm:p-5 mt-1">
-        {error && <div className="bg-red-100 text-red-600 p-2 rounded text-sm">{error}</div>}
-        
         <div>
           <h2 className="text-sm sm:text-base mb-2 font-[400] text-gray-500">Username</h2>
           <input
@@ -115,9 +111,9 @@ function Signup() {
         <button
           onClick={handleSignup}
           disabled={loading}
-          className="bg-[#FBA808] w-full py-2.5 rounded-lg text-base text-[#F8FAFC] font-semibold disabled:opacity-50"
+          className="bg-[#FBA808] w-full py-2.5 rounded-lg text-base text-[#F8FAFC] font-semibold disabled:opacity-50 flex justify-center items-center h-11"
         >
-          Sign up
+          {loading ? <Loader2 className="animate-spin" size={20} /> : "Sign up"}
         </button>
       </div>
       <div className="pt-4 text-center">

@@ -7,9 +7,13 @@ import Cart from "./pages/cart.jsx"
 import Profile from "./pages/Profile.jsx"
 import MyOrders from "./pages/MyOrders.jsx";
 import CanteenHome from "./componet/Dashboard/canteenDash/CanteenHome.jsx"
+import Wallet from "./pages/Wallet.jsx";
+import ErrorPage from "./pages/ErrorPage.jsx";
+import SplashScreen from "./componet/SplashScreen.jsx";
 
 import { Route, Routes, Navigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext.jsx";
+import { useState, useEffect } from "react";
 
 // Protected route wrapper using Firebase Auth.
 function ProtectedRoute({ children, allowedRoles }) {
@@ -28,6 +32,19 @@ function ProtectedRoute({ children, allowedRoles }) {
 }
 
 export default function App() {
+    const [isAppLoading, setIsAppLoading] = useState(true);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setIsAppLoading(false);
+        }, 2000); // 2 seconds flash screen
+        return () => clearTimeout(timer);
+    }, []);
+
+    if (isAppLoading) {
+        return <SplashScreen />;
+    }
+
     return (
         <Routes>
             <Route path="/" element={<Layout />}>
@@ -77,6 +94,16 @@ export default function App() {
                     </ProtectedRoute>
                 }
             />
+            <Route
+                path="wallet"
+                element={
+                    <ProtectedRoute>
+                        <Wallet />
+                    </ProtectedRoute>
+                }
+            />
+            {/* Catch-all Route for Error Page */}
+            <Route path="*" element={<ErrorPage />} />
         </Routes>
     );
 }

@@ -6,7 +6,8 @@ function SubPageHeader({ page = "orders" }) {
   const pageMap = {
     orders: { label: "Orders" },
     profile: { label: "Profile" },
-    cart: { label: "Cart" }
+    cart: { label: "Cart" },
+    wallet: { label: "Wallet" }
   };
 
   const active = pageMap[page] || pageMap.orders;

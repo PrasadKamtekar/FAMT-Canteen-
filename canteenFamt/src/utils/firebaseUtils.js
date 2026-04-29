@@ -151,6 +151,39 @@ export const placeOrder = async (userId, userName, cartItems, total) => {
   return { id: docRef.id, token };
 };
 
+export const placeOrderWithWallet = async (userId, userName, cartItems, total, currentBalance) => {
+  if (currentBalance < total) {
+    throw new Error("Insufficient wallet balance.");
+  }
+
+  // Generate random Token
+  const token = "TKN-" + Math.floor(1000 + Math.random() * 9000);
+  
+  const orderData = {
+    userId,
+    userName,
+    token,
+    items: cartItems,
+    total,
+    status: "pending",
+    paymentMethod: "wallet",
+    createdAt: new Date().toISOString()
+  };
+  
+  // Create Order
+  const docRef = await addDoc(collection(db, "orders"), orderData);
+  
+  // Deduct from wallet balance
+  const userRef = doc(db, "users", userId);
+  await updateDoc(userRef, {
+    walletBalance: currentBalance - total
+  });
+
+  // Clear Cart
+  await clearCart(userId);
+  return { id: docRef.id, token };
+};
+
 export const subscribeToUserOrders = (userId, callback) => {
   if (!userId) return () => {};
   const q = query(collection(db, "orders"), where("userId", "==", userId));
@@ -176,8 +209,34 @@ export const getAllOrders = async () => {
   return orderList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
-export const updateOrderStatus = async (orderId, newStatus) => {
-  await updateDoc(doc(db, "orders", orderId), { status: newStatus });
+export const updateOrderStatus = async (orderId, newStatus, refundMethod = "wallet") => {
+  if (newStatus === "cancelled") {
+    const orderDoc = await getDoc(doc(db, "orders", orderId));
+    if (orderDoc.exists()) {
+      const orderData = orderDoc.data();
+      if (orderData.status !== "cancelled") {
+        if (refundMethod === "wallet") {
+          const userId = orderData.userId;
+          const total = orderData.total || 0;
+          const userDoc = await getDoc(doc(db, "users", userId));
+          let currentBalance = 0;
+          if (userDoc.exists()) {
+            currentBalance = userDoc.data().walletBalance || 0;
+          }
+          await setDoc(doc(db, "users", userId), {
+            walletBalance: currentBalance + total
+          }, { merge: true });
+        }
+      }
+    }
+  }
+  
+  const updateData = { status: newStatus };
+  if (newStatus === "cancelled" && refundMethod) {
+    updateData.refundMethod = refundMethod;
+  }
+  
+  await updateDoc(doc(db, "orders", orderId), updateData);
 };
 
 // ==============================
@@ -205,4 +264,27 @@ export const updateUserProfile = async (uid, profileData, imageFile = null) => {
     ...profileData,
     profileImage
   }, { merge: true });
+};
+
+// ==============================
+// WALLET FUNCTIONS
+// ==============================
+export const requestWithdrawal = async (uid, amount, method, details, currentBalance) => {
+  if (!uid || amount <= 0 || amount > currentBalance) throw new Error("Invalid withdrawal request");
+
+  // Add the withdrawal request
+  await addDoc(collection(db, "withdrawals"), {
+    userId: uid,
+    amount: amount,
+    method: method,
+    details: details,
+    status: "pending",
+    createdAt: new Date().toISOString()
+  });
+
+  // Deduct from wallet balance
+  const userRef = doc(db, "users", uid);
+  await updateDoc(userRef, {
+    walletBalance: currentBalance - amount
+  });
 };

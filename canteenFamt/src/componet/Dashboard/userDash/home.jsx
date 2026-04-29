@@ -41,7 +41,7 @@ function Home() {
       </div>
 
       {/* ADD SPACE so content not hide */}
-      <div className="mt-44 sm:mt-48 bg-[#EDEEEF] px-4 sm:px-6 py-5 min-h-[75vh]">
+      <div className="pt-36 sm:pt-44 bg-[#EDEEEF] px-4 sm:px-6 pb-10 min-h-[100dvh]">
         {loading ? (
           <div className="flex justify-center items-center py-20">
             <h1 className="text-[#0F6657] font-semibold text-lg">Loading Menu...</h1>

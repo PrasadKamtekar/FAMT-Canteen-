@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CircleCheckBig } from 'lucide-react';
+import { CircleCheckBig, Wallet, CreditCard } from 'lucide-react';
 import CartItemList from "../componet/Dashboard/userDash/cartItemList.jsx"
 import { useNavigate } from 'react-router-dom';
 import SubPageHeader from "../componet/Dashboard/userDash/SubPageHeader.jsx";
@@ -8,7 +8,9 @@ import {
   subscribeToCart,
   updateCartItemQuantity,
   removeFromCart,
-  placeOrder
+  placeOrder,
+  placeOrderWithWallet,
+  getUserProfile
 } from "../utils/firebaseUtils.js";
 import toast from "react-hot-toast";
 
@@ -31,13 +33,32 @@ function Cart() {
   const { currentUser } = useAuth();
   const [cartItems, setCartItems] = useState([]);
   const [orderSuccess, setOrderSuccess] = useState(null);
+  
+  // Wallet & Payment State
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState("online"); // 'online' | 'wallet'
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     if (!currentUser) return;
-    const unsubscribe = subscribeToCart(currentUser.uid, (items) => {
+    
+    // Subscribe to cart
+    const unsubscribeCart = subscribeToCart(currentUser.uid, (items) => {
       setCartItems(items);
     });
-    return () => unsubscribe();
+
+    // Fetch wallet balance
+    const fetchWallet = async () => {
+      const profile = await getUserProfile(currentUser.uid);
+      if (profile && profile.walletBalance !== undefined) {
+        setWalletBalance(profile.walletBalance);
+      }
+    };
+    fetchWallet();
+
+    return () => {
+      unsubscribeCart();
+    };
   }, [currentUser]);
 
   const handleIncrease = async (id, cartDocId, currentQuantity) => {
@@ -65,8 +86,6 @@ function Cart() {
     }
   };
 
-  // TOTAL PRICE:
-  // Simple reduce over all cart items: sum(price * quantity).
   const total = useMemo(() => {
     return cartItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
@@ -75,19 +94,47 @@ function Cart() {
   }, [cartItems]);
 
   const handleConfirmOrder = async () => {
-    if (!cartItems.length || !currentUser) {
+    if (!currentUser) return;
+    
+    if (!cartItems.length) {
+      toast.error("Please select an item first.");
       return;
     }
 
+    const userName = currentUser.displayName || currentUser.email.split('@')[0];
+
+    // --- WALLET PAYMENT LOGIC ---
+    if (paymentMethod === "wallet") {
+      if (walletBalance < total) {
+        toast.error("Insufficient wallet balance.");
+        return;
+      }
+      try {
+        setIsProcessing(true);
+        toast.loading("Processing payment from wallet...", { id: "order" });
+        
+        const { token } = await placeOrderWithWallet(currentUser.uid, userName, cartItems, total, walletBalance);
+        
+        toast.success("Order placed successfully!", { id: "order" });
+        setOrderSuccess({ token, userName, total });
+      } catch (error) {
+        toast.error(error.message || "Failed to place order using wallet.", { id: "order" });
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+
+    // --- RAZORPAY LOGIC (ONLINE) ---
+    setIsProcessing(true);
     toast.loading("Loading payment gateway...", { id: "order" });
     const isLoaded = await loadRazorpay();
 
     if (!isLoaded) {
       toast.error("Failed to load payment gateway", { id: "order" });
+      setIsProcessing(false);
       return;
     }
-
-    const userName = currentUser.displayName || currentUser.email.split('@')[0];
 
     const options = {
       key: "rzp_test_SfLSUjiPymkMlt",
@@ -96,20 +143,27 @@ function Cart() {
       name: "FAMT Canteen",
       description: "Food Order Payment",
       image: "https://cdn-icons-png.flaticon.com/512/3703/3703377.png",
+      config: {
+        display: {
+          hide: [{ method: "card" }, { method: "netbanking" }, { method: "wallet" }]
+        }
+      },
       handler: async function (response) {
-        // Payment succeeded
         try {
           toast.loading("Placing order...", { id: "order" });
           const { token } = await placeOrder(currentUser.uid, userName, cartItems, total);
-          
           toast.success("Order placed successfully!", { id: "order" });
-          setOrderSuccess({
-            token,
-            userName,
-            total
-          });
+          setOrderSuccess({ token, userName, total });
         } catch (error) {
           toast.error("Failed to save order", { id: "order" });
+        } finally {
+          setIsProcessing(false);
+        }
+      },
+      modal: {
+        ondismiss: function() {
+          setIsProcessing(false);
+          toast.dismiss("order");
         }
       },
       prefill: {
@@ -123,14 +177,11 @@ function Cart() {
     };
 
     const paymentObject = new window.Razorpay(options);
-    
     paymentObject.on('payment.failed', function (response) {
       toast.error(response.error.description || "Payment failed", { id: "order" });
+      setIsProcessing(false);
     });
 
-    // Also handle when user closes the modal
-    // Note: Razorpay doesn't have an explicit dismiss event, but the window will just close.
-    // The previous toast.loading is dismissed so it doesn't spin forever.
     paymentObject.open();
     toast.dismiss("order");
   };
@@ -159,7 +210,7 @@ function Cart() {
             </div>
             <div className="flex justify-between text-sm sm:text-base text-gray-700">
               <span>Total Amount</span>
-              <span className="font-semibold text-[#0F6657]">Rs {orderSuccess.total}</span>
+              <span className="font-semibold text-[#0F6657]">₹{orderSuccess.total}</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
@@ -182,13 +233,16 @@ function Cart() {
     );
   }
 
+  const isWalletDisabled = walletBalance < total;
+
   return (
-    <div className="min-h-[100dvh] bg-[#eeeef1] pb-24">
+    <div className="min-h-[100dvh] bg-[#eeeef1] pb-[20vh] sm:pb-[15vh]">
       <SubPageHeader page="cart" />
-      {/** ;list containeer */}
       <div className="px-4 sm:px-8 py-5">
         <div className="w-full max-w-6xl mx-auto gap-6 flex flex-col lg:flex-row lg:items-start">
-          <div className="bg-[#ffffff] w-full lg:w-8/12 flex flex-col items-center gap-3 rounded-xl p-4 shadow-sm max-h-[58vh] overflow-y-auto">
+          
+          {/* Cart Items */}
+          <div className="bg-[#ffffff] w-full lg:w-7/12 flex flex-col items-center gap-3 rounded-xl p-4 shadow-sm max-h-[50vh] overflow-y-auto">
             {cartItems.map((item) => (
               <CartItemList
                 key={item.id}
@@ -203,42 +257,107 @@ function Cart() {
             )}
           </div>
 
-          {/** order details */}
-          <div className="bg-[#ffffff] w-full lg:w-4/12 flex flex-col items-center gap-3 rounded-xl shadow-sm p-4 lg:sticky lg:top-28">
-            <h1 className="text-[#666666] font-semibold tracking-wider text-lg">Bill Details</h1>
-            <div className="bg-[#ffffff] w-full rounded-xl tracking-wide border border-gray-200">
-              {cartItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex justify-between px-4 py-2 text-sm sm:text-base"
-                >
-                  <h1 className="text-[#666666]">
-                    {item.name} x {item.quantity}
-                  </h1>
-                  <h1 className="text-[#2e2e2e]">₹{item.price * item.quantity}</h1>
+          {/* Checkout & Payment Details */}
+          <div className="w-full lg:w-5/12 flex flex-col gap-4 lg:sticky lg:top-28">
+            
+            {/* Bill Details */}
+            <div className="bg-[#ffffff] flex flex-col items-center gap-3 rounded-xl shadow-sm p-4">
+              <h1 className="text-[#666666] font-semibold tracking-wider text-lg w-full text-center">Bill Details</h1>
+              <div className="bg-[#ffffff] w-full rounded-xl tracking-wide border border-gray-200">
+                {cartItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex justify-between px-4 py-2 text-sm sm:text-base"
+                  >
+                    <h1 className="text-[#666666]">
+                      {item.name} x {item.quantity}
+                    </h1>
+                    <h1 className="text-[#2e2e2e]">₹{item.price * item.quantity}</h1>
+                  </div>
+                ))}
+                <hr className="w-[92%] mx-auto text-[#666666]" />
+                <div className="flex justify-end gap-4 px-4 py-3 font-medium">
+                  <h1 className="text-[#2e2e2e]" >Total</h1>
+                  <h1 className="text-[#0F6657]">₹{total}</h1>
                 </div>
-              ))}
-              <hr className="w-[92%] mx-auto text-[#666666]" />
-              <div className="flex justify-end gap-4 px-4 py-3">
-                <h1 className="text-[#2e2e2e]" >Total</h1>
-                <h1 className="text-[#2e2e2e]">₹{total}</h1>
               </div>
             </div>
+
+            {/* Payment Method Selection */}
+            {cartItems.length > 0 && (
+              <div className="bg-[#ffffff] rounded-xl shadow-sm p-4">
+                <h1 className="text-[#666666] font-semibold tracking-wider text-lg mb-3">Payment Method</h1>
+                
+                <div className="space-y-3">
+                  <label 
+                    className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                      paymentMethod === "online" ? "border-[#0F6657] bg-[#E6F7F3]" : "border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="online"
+                      checked={paymentMethod === "online"}
+                      onChange={() => setPaymentMethod("online")}
+                      className="mt-1 accent-[#0F6657]"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 font-medium text-gray-800">
+                        <CreditCard size={18} className="text-[#0F6657]" /> Online Payment
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">Pay via Razorpay (UPI, Pay Later)</div>
+                    </div>
+                  </label>
+
+                  <label 
+                    className={`flex items-start gap-3 p-3 border rounded-lg transition-colors ${
+                      isWalletDisabled ? "opacity-50 cursor-not-allowed bg-gray-50" : "cursor-pointer hover:bg-gray-50"
+                    } ${paymentMethod === "wallet" ? "border-[#0F6657] bg-[#E6F7F3]" : "border-gray-200"}`}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="wallet"
+                      checked={paymentMethod === "wallet"}
+                      onChange={() => !isWalletDisabled && setPaymentMethod("wallet")}
+                      disabled={isWalletDisabled}
+                      className="mt-1 accent-[#0F6657]"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 font-medium text-gray-800">
+                          <Wallet size={18} className="text-[#0F6657]" /> Canteen Wallet
+                        </div>
+                        <div className="font-semibold text-sm text-[#0F6657]">₹{walletBalance.toFixed(2)}</div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {isWalletDisabled 
+                          ? "Insufficient balance for this order." 
+                          : "Deduct directly from your wallet balance."}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       </div>
 
-      {/** footer */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#ffffff] h-[11vh] flex items-center justify-center border-t border-gray-200">
+      {/* Footer */}
+      <div className="fixed bottom-0 left-0 right-0 bg-[#ffffff] h-[11vh] flex items-center justify-center border-t border-gray-200 z-50">
         <button
           onClick={handleConfirmOrder}
-          className="bg-[#e31837] text-white w-[95%] max-w-4xl py-2.5 rounded-lg tracking-wider font-medium"
+          disabled={isProcessing || (paymentMethod === "wallet" && isWalletDisabled)}
+          className="bg-[#e31837] hover:bg-[#c91530] text-white w-[95%] max-w-4xl py-3 rounded-lg tracking-wider font-semibold disabled:opacity-50 transition-colors"
         >
-          Order confirm
+          {isProcessing ? "Processing..." : cartItems.length ? `Confirm Order • ₹${total}` : "Order confirm"}
         </button>
       </div>
     </div>
   )
 }
 
-export default Cart
+export default Cart;
